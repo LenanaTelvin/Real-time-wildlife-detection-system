@@ -21,7 +21,7 @@ import VideoFeed from "../components/VideoFeed";
 import MetricsDisplay from "../components/MetricsDisplay";
 
 // ⭐ BACKEND URL — change this if your partner'ss backend is on another machine
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = "http://192.168.0.100:5000";
 
 export default function Dashboard() {
   // ── STATE ──────────────────────────────────────────────────────────────────
@@ -63,25 +63,61 @@ export default function Dashboard() {
   }
 
 
-  // ── START CAMERA ───────────────────────────────────────────────────────────
-  // Calls POST /api/camera/start
-  async function startCamera() {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/camera/start`, {
+ // ── START CAMERA ───────────────────────────────────────────────────────────
+let uploadInterval = null; 
+
+async function startCamera() {
+  // 1. Detect device type
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  
+  // 2. Set camera: 'environment' (back) for mobile, 'user' (front) for laptop
+  const constraints = {
+    video: {
+      facingMode: isMobile ? { exact: "environment" } : "user",
+      width: { ideal: 640 },
+      height: { ideal: 480 }
+    },
+    audio: false
+  };
+
+  try {
+    // 3. Open the camera IN THE BROWSER
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    
+    // 4. Show toast based on device
+    showToast(isMobile ? "Mobile CCTV Active (Back Camera)" : "Laptop CCTV Active (Front Camera)");
+
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    await video.play();
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    // 5. Send frames to Railway every 200ms
+    setIsRunning(true);
+    uploadInterval = setInterval(() => {
+      if (!video.videoWidth) return;
+
+      canvas.width = 640;
+      canvas.height = 480;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const base64Image = canvas.toDataURL('image/jpeg', 0.5); 
+
+      // This sends the frame to the Railway backend
+      fetch(`${BACKEND_URL}/api/video/upload_frame`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "webcam" }),
+        body: JSON.stringify({ image: base64Image }),
       });
-      const data = await res.json();
-      if (data.status === "started" || data.status === "already_running") {
-        setIsRunning(true);
-        showToast("Camera started");
-      }
-    } catch {
-      showToast("⚠️ Cannot connect to backend");
-    }
-  }
+    }, 200);
 
+  } catch (err) {
+    console.error("Camera Error:", err);
+    showToast("⚠️ Camera access denied. Use HTTPS.");
+  }
+}
 
   // ── STOP CAMERA ────────────────────────────────────────────────────────────
   // Calls POST /api/camera/stop
