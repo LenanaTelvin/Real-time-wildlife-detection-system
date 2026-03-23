@@ -21,6 +21,7 @@ tqdm>=4.65.0
 pyyaml>=6.0
 fastapi>=0.110.0
 flask>=2.3.0
+Flask-CORS==4.0.0
 
 # Jupyter for notebooks
 jupyter>=1.0.0
