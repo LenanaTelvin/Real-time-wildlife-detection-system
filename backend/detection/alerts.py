@@ -15,9 +15,9 @@ from email.mime.image import MIMEImage
 # ── EMAIL CONFIGURATION ───────────────────────────────────────────────────────
 SMTP_SERVER    = "smtp.gmail.com"
 SMTP_PORT      = 587
-SMTP_EMAIL     = "rosicorazon16@gmail.com"
-SMTP_PASSWORD  = "pacacuqdhbmluhsq"        # Gmail App Password (no spaces)
-RECEIVER_EMAIL = "mary.wambui.zetech@gmail.com"  # Where alerts go
+SMTP_EMAIL     = "example@gmail.com"
+SMTP_PASSWORD  = "pacacuqfbfjq"        
+RECEIVER_EMAIL = "example@gmail.com"  
 
 COOLDOWN_SECONDS = 30   # Only alert once per species every 30 seconds
 

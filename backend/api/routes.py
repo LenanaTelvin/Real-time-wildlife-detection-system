@@ -15,7 +15,9 @@
     DELETE /api/detections/<id>     → delete one log entry
 ================================================================
 """
-
+import base64
+import cv2
+import numpy as np
 import os
 import threading
 from flask import Blueprint, jsonify, request, Response
@@ -57,20 +59,54 @@ def health_check():
 # ── START CAMERA / VIDEO ──────────────────────────────────────────────────────
 @api_blueprint.route("/camera/start", methods=["POST"])
 def start_camera():
-    """
-    Frontend calls this when user clicks the Start button.
-    Body (optional JSON): { "source": "webcam" }
-                       or { "source": "/path/to/video.mp4" }
-    """
     if is_camera_active():
         return jsonify({"status": "already_running"})
 
     data = request.get_json(silent=True) or {}
-    source = data.get("source", "webcam")
+    source_type = data.get("source", "webcam")
+    facing_mode = data.get("facingMode", "user") # Default to 'user'
 
+    # Logic to determine camera index
+    if source_type == "webcam":
+        # Usually: 0 = Laptop/Front, 1 = Back camera
+        # If 1 doesn't work on your specific mobile hardware, try 2
+        source = 1 if facing_mode == "environment" else 0
+    else:
+        # If source is a file path (e.g., "video.mp4")
+        source = source_type
+
+    # Pass the index (int) or path (string) to your processing function
     start_video_processing(source)
-    return jsonify({"status": "started", "source": source})
+    
+    return jsonify({
+        "status": "started", 
+        "source": source,
+        "mode": facing_mode
+    })
 
+# ── UPLOAD FRAMES ───────────────────────────────────────────────────────────────
+@api_blueprint.route("/video/upload_frame", methods=["POST"])
+def upload_frame():
+    """
+    Receives frames pushed from the mobile browser.
+    """
+    data = request.get_json()
+    if not data or 'image' not in data:
+        return jsonify({"status": "error"}), 400
+
+    try:
+        # Decode the image sent by the phone
+        header, encoded = data['image'].split(",", 1)
+        nparr = np.frombuffer(base64.b64decode(encoded), np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # Send to YOLO model
+        from detection.model import process_remote_frame
+        process_remote_frame(frame)
+        
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ── STOP CAMERA ───────────────────────────────────────────────────────────────
 @api_blueprint.route("/camera/stop", methods=["POST"])

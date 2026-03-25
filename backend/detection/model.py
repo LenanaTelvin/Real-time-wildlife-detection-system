@@ -12,7 +12,12 @@ from datetime import datetime
 from ultralytics import YOLO
 
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────
-MODEL_PATH           = "best.pt"
+#MODEL_PATH           = "best.pt"
+# Get the absolute path to the model file (works both locally and on Render)
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_model_path = os.path.join(_current_dir, '..', 'best.pt')
+MODEL_PATH = os.path.abspath(_model_path)
+
 CONFIDENCE_THRESHOLD = 0.65
 
 SPECIES_COLORS = {
@@ -49,6 +54,25 @@ def start_video_processing(source: str):
     _camera_thread.start()
 
 
+latest_processed_frame = None
+
+def process_remote_frame(frame):
+    global latest_processed_frame
+    
+    # 1. Run YOLO detection
+    results = model(frame)
+    
+    # 2. Draw boxes
+    annotated = results[0].plot()
+    
+    # 3. Save to global for the MJPEG stream
+    _, buffer = cv2.imencode('.jpg', annotated)
+    latest_processed_frame = buffer.tobytes()
+
+def get_latest_frame():
+    return latest_processed_frame
+
+
 def stop_video_processing():
     global _camera_active
     _camera_active = False
@@ -74,6 +98,7 @@ def get_fps() -> float:
 
 
 # ── BACKGROUND PROCESSING LOOP ────────────────────────────────────────────────
+
 def _processing_loop(source: str):
     global _camera_active, _latest_frame, _latest_dets, _frame_count, _fps_timestamps
 
