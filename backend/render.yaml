@@ -11,7 +11,7 @@ services:
       pip install -r ../requirements.txt
       # Download any necessary model files if needed
       # python -c "from ultralytics import YOLO; YOLO('best.pt')"
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 1 --worker-class eventlet --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
@@ -25,6 +25,15 @@ services:
         value: production
       - key: RENDER
         value: true
+
+        # in source code. Set these values in the Render dashboard under
+      # Environment Variables, or use Render's Secret Files feature.
+      - key: SMTP_EMAIL
+        sync: false         # set manually in Render dashboard
+      - key: SMTP_PASSWORD
+        sync: false         # set manually in Render dashboard
+      - key: RECEIVER_EMAIL
+        sync: false         # set manually in Render dashboard
     disk:
       name: uploads
       mountPath: /tmp/uploads

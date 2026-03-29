@@ -3,10 +3,6 @@
  *
  * THE MAIN PAGE — wires VideoFeed + MetricsDisplay together.
  *
- * ⭐ THIS IS WHERE ALL API CALLS HAPPEN ⭐
- * All fetch() calls to the backend are in this file.
- * Components (VideoFeed, MetricsDisplay) just receive data as props.
- *
  * API calls made here:
  *   POST /api/camera/start       → startCamera()
  *   POST /api/camera/stop        → stopCamera()
@@ -20,8 +16,12 @@ import { useState, useEffect, useRef } from "react";
 import VideoFeed from "../components/VideoFeed";
 import MetricsDisplay from "../components/MetricsDisplay";
 
-// ⭐ BACKEND URL — change this if your partner'ss backend is on another machine
-const BACKEND_URL = "http://192.168.0.100:5000";
+// ── FIX 1: BACKEND_URL now reads from environment variable ───────────────────
+// Previously hardcoded to "http://192.168.0.100:5000" (partner's local IP)
+// which breaks for everyone else and in production.
+// Create frontend/.env with: VITE_API_URL=http://localhost:5000
+// On Render, render.yaml sets VITE_API_URL automatically.
+const BACKEND_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
 
 export default function Dashboard() {
   // ── STATE ──────────────────────────────────────────────────────────────────
@@ -33,13 +33,21 @@ export default function Dashboard() {
   const [backendOnline, setBackendOnline] = useState(false);
   const [toast, setToast]                 = useState("");
 
+  // ── FIX 2: uploadInterval moved to useRef ────────────────────────────────
+  // Previously declared as "let uploadInterval = null" inside the component
+  // body but outside functions — not React-safe. useRef persists across
+  // renders without triggering re-renders and is the correct React pattern
+  // for storing mutable values like interval IDs.
+  const uploadIntervalRef = useRef(null);   // was: let uploadInterval = null
+
+
   // ── POLLING INTERVALS ──────────────────────────────────────────────────────
   useEffect(() => {
     checkHealth();
     loadStats();
 
-    const liveInterval  = setInterval(pollLiveDetections, 1500);
-    const statsInterval = setInterval(loadStats, 5000);
+    const liveInterval   = setInterval(pollLiveDetections, 1500);
+    const statsInterval  = setInterval(loadStats, 5000);
     const healthInterval = setInterval(checkHealth, 10000);
 
     return () => {
@@ -51,11 +59,10 @@ export default function Dashboard() {
 
 
   // ── HEALTH CHECK ───────────────────────────────────────────────────────────
-  // Calls GET /api/health to check if backend is up
   async function checkHealth() {
     try {
       const res = await fetch(`${BACKEND_URL}/api/health`);
-      const data = await res.json();
+      await res.json();
       setBackendOnline(true);
     } catch {
       setBackendOnline(false);
@@ -63,65 +70,68 @@ export default function Dashboard() {
   }
 
 
- // ── START CAMERA ───────────────────────────────────────────────────────────
-let uploadInterval = null; 
+  // ── START CAMERA ───────────────────────────────────────────────────────────
+  async function startCamera() {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-async function startCamera() {
-  // 1. Detect device type
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  
-  // 2. Set camera: 'environment' (back) for mobile, 'user' (front) for laptop
-  const constraints = {
-    video: {
-      facingMode: isMobile ? { exact: "environment" } : "user",
-      width: { ideal: 640 },
-      height: { ideal: 480 }
-    },
-    audio: false
-  };
+    const constraints = {
+      video: {
+        facingMode: isMobile ? { exact: "environment" } : "user",
+        width:  { ideal: 640 },
+        height: { ideal: 480 },
+      },
+      audio: false,
+    };
 
-  try {
-    // 3. Open the camera IN THE BROWSER
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    
-    // 4. Show toast based on device
-    showToast(isMobile ? "Mobile CCTV Active (Back Camera)" : "Laptop CCTV Active (Front Camera)");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      showToast(isMobile ? "Mobile CCTV Active (Back Camera)" : "Laptop CCTV Active (Front Camera)");
 
-    const video = document.createElement('video');
-    video.srcObject = stream;
-    await video.play();
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+      const canvas  = document.createElement("canvas");
+      const context = canvas.getContext("2d");
 
-    // 5. Send frames to Railway every 200ms
-    setIsRunning(true);
-    uploadInterval = setInterval(() => {
-      if (!video.videoWidth) return;
+      setIsRunning(true);
 
-      canvas.width = 640;
-      canvas.height = 480;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      const base64Image = canvas.toDataURL('image/jpeg', 0.5); 
+      // ── FIX 3: Interval stored in uploadIntervalRef.current ──────────────
+      // Previously stored in a plain "let" variable which is not React-safe.
+      uploadIntervalRef.current = setInterval(() => {   // was: uploadInterval = setInterval(...)
+        if (!video.videoWidth) return;
 
-      // This sends the frame to the Railway backend
-      fetch(`${BACKEND_URL}/api/video/upload_frame`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64Image }),
-      });
-    }, 200);
+        canvas.width  = 640;
+        canvas.height = 480;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  } catch (err) {
-    console.error("Camera Error:", err);
-    showToast("⚠️ Camera access denied. Use HTTPS.");
+        const base64Image = canvas.toDataURL("image/jpeg", 0.3);
+
+        fetch(`${BACKEND_URL}/api/video/upload_frame`, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ image: base64Image }),
+        });
+      }, 100);
+
+    } catch (err) {
+      console.error("Camera Error:", err);
+      showToast("Camera access denied. Use HTTPS.");
+    }
   }
-}
+
 
   // ── STOP CAMERA ────────────────────────────────────────────────────────────
-  // Calls POST /api/camera/stop
   async function stopCamera() {
+    // ── FIX 4: Clear the upload interval when stopping ───────────────────────
+    // Previously stopCamera() never cleared uploadIntervalRef, so the phone
+    // kept sending frames to the backend every 200ms forever after clicking
+    // Stop — wasting bandwidth and triggering detections with no stream active.
+    if (uploadIntervalRef.current) {
+      clearInterval(uploadIntervalRef.current);   // was: missing entirely
+      uploadIntervalRef.current = null;
+    }
+
     try {
       await fetch(`${BACKEND_URL}/api/camera/stop`, { method: "POST" });
       setIsRunning(false);
@@ -129,21 +139,20 @@ async function startCamera() {
       setFps(null);
       showToast("Camera stopped");
     } catch {
-      showToast("⚠️ Error stopping camera");
+      showToast("Error stopping camera");
     }
   }
 
 
   // ── UPLOAD VIDEO ───────────────────────────────────────────────────────────
-  // Calls POST /api/video/upload (multipart)
   async function uploadVideo(file) {
     const formData = new FormData();
     formData.append("video", file);
     showToast(`Uploading ${file.name}...`);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/video/upload`, {
+      const res  = await fetch(`${BACKEND_URL}/api/video/upload`, {
         method: "POST",
-        body: formData,
+        body:   formData,
       });
       const data = await res.json();
       if (data.status === "processing") {
@@ -151,17 +160,16 @@ async function startCamera() {
         showToast(`Processing: ${data.filename}`);
       }
     } catch {
-      showToast("⚠️ Upload failed");
+      showToast("Upload failed");
     }
   }
 
 
   // ── POLL LIVE DETECTIONS ───────────────────────────────────────────────────
-  // Calls GET /api/detections/live — runs every 1.5s while camera is active
   async function pollLiveDetections() {
     if (!isRunning) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/detections/live`);
+      const res  = await fetch(`${BACKEND_URL}/api/detections/live`);
       const data = await res.json();
       setLiveDets(data.detections || []);
       setFps(data.fps);
@@ -173,10 +181,9 @@ async function startCamera() {
 
 
   // ── LOAD STATS ─────────────────────────────────────────────────────────────
-  // Calls GET /api/detections/stats — runs every 5s
   async function loadStats() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/detections/stats`);
+      const res  = await fetch(`${BACKEND_URL}/api/detections/stats`);
       const data = await res.json();
       setStats(data);
     } catch {
@@ -196,7 +203,6 @@ async function startCamera() {
   return (
     <div className="dashboard">
 
-      {/* Header */}
       <header className="app-header">
         <div className="brand">
           <div className={`brand-dot ${backendOnline ? "online" : ""}`} />
@@ -209,7 +215,6 @@ async function startCamera() {
       </header>
 
       <main className="main-content">
-        {/* Top grid: video (left) + stats (right) */}
         <div className="top-grid">
           <VideoFeed
             isRunning={isRunning}
@@ -226,7 +231,6 @@ async function startCamera() {
         </div>
       </main>
 
-      {/* Toast notification */}
       {toast && <div className="toast show">{toast}</div>}
     </div>
   );
