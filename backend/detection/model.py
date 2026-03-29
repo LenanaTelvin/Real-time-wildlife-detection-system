@@ -23,7 +23,7 @@ CONFIDENCE_THRESHOLD = 0.68
 SPECIES_COLORS = {
     "lions":   (0, 255, 0),
     "hyenas":  (128, 0, 128),
-    "buffalo": (0, 0, 255),   # was "Buffalo" (capital B) — never matched
+    "Buffalo": (0, 0, 255),   
 }
 
 _logged_this_session  = set()
