@@ -2,31 +2,30 @@
  * frontend/pages/History.jsx
  *
  * THE HISTORY PAGE — shows the full detection log table.
- * Can also be embedded at the bottom of Dashboard.jsx.
  *
- * ⭐ API CALLS MADE HERE ⭐
+ * API calls made here:
  *   GET    /api/detections/logs?limit=100&species=<filter>
  *   DELETE /api/detections/<id>
- *   GET    /api/detections/stats   (for count in toolbar)
  */
 
 import { useState, useEffect } from "react";
 import DetectionOverlay from "../components/DetectionOverlay";
 
-// ⭐ BACKEND URL — keep in sync with Dashboard.jsx
-const BACKEND_URL = "http://localhost:5000";
-
+// ── FIX 1: BACKEND_URL now reads from environment variable ───────────────────
+// Previously hardcoded to "http://localhost:5000" which only works on the
+// machine running the backend. Breaks on phones and in production on Render.
+// Set VITE_API_URL in frontend/.env for local dev.
+// On Render, render.yaml sets VITE_API_URL to the deployed backend URL.
+const BACKEND_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
 export default function History() {
-  const [logs, setLogs]           = useState([]);
-  const [totalCount, setTotal]    = useState(0);
+  const [logs, setLogs]            = useState([]);
+  const [totalCount, setTotal]     = useState(0);
   const [speciesFilter, setFilter] = useState("");
 
-  // Load logs on mount and whenever filter changes
   useEffect(() => {
     loadLogs(speciesFilter);
   }, [speciesFilter]);
 
-  // Auto-refresh logs every 10s
   useEffect(() => {
     const interval = setInterval(() => loadLogs(speciesFilter), 10000);
     return () => clearInterval(interval);
@@ -34,7 +33,6 @@ export default function History() {
 
 
   // ── FETCH LOGS ─────────────────────────────────────────────────────────────
-  // Calls GET /api/detections/logs
   async function loadLogs(species = "") {
     const url = species
       ? `${BACKEND_URL}/api/detections/logs?limit=100&species=${species}`
@@ -52,11 +50,10 @@ export default function History() {
 
 
   // ── DELETE A LOG ENTRY ─────────────────────────────────────────────────────
-  // Calls DELETE /api/detections/<id>
   async function handleDelete(id) {
     try {
       await fetch(`${BACKEND_URL}/api/detections/${id}`, { method: "DELETE" });
-      loadLogs(speciesFilter); // Refresh table after delete
+      loadLogs(speciesFilter);
     } catch {
       alert("Could not delete — is backend running?");
     }

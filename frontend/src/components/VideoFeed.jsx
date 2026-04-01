@@ -3,11 +3,9 @@
  *
  * The live video panel (left side of the dashboard).
  *
- * ⭐ HOW THE VIDEO WORKS ⭐
  * The backend sends an MJPEG stream (a continuous flow of JPEG frames).
- * We connect to it simply by pointing an <img> src at the backend URL.
- * The backend already draws bounding boxes before sending each frame —
- * so this component just displays it, no detection logic here.
+ * We connect to it by pointing an <img> src at the backend URL.
+ * The backend already draws bounding boxes before sending each frame.
  *
  * Props:
  *   isRunning  {bool}    — whether camera is active
@@ -20,7 +18,12 @@
 
 import { useRef } from "react";
 
-const BACKEND_URL = "http://localhost:5000"; // ⭐ Change if backend is on another machine
+// ── FIX 1: BACKEND_URL now reads from environment variable ───────────────────
+// Previously hardcoded to "http://localhost:5000" which only works on the
+// machine running the backend. Fails on phones, other laptops, and production.
+// Set VITE_API_URL in frontend/.env for local dev.
+// On Render, render.yaml sets it to the deployed backend URL automatically.
+const BACKEND_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`; // was: "http://localhost:5000" hardcoded
 
 export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, frameCount }) {
   const fileInputRef = useRef(null);
@@ -28,12 +31,12 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
   function handleFileChange(e) {
     const file = e.target.files[0];
     if (file) onUpload(file);
-    e.target.value = ""; // reset so same file can be re-uploaded
+    e.target.value = "";
   }
 
   return (
     <div className="panel">
-      {/* Panel header */}
+
       <div className="panel-header">
         <span className="panel-title">Live Video Feed</span>
         <span className="frame-counter">
@@ -41,15 +44,11 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
         </span>
       </div>
 
-      {/* Video area */}
       <div className="video-wrapper">
-
         {/*
-          ⭐ STREAM CONNECTION ⭐
-          This img tag connects to GET /api/video/stream on the backend.
+          Stream connection — points to GET /api/video/stream on the backend.
           When camera is running, the backend pushes annotated frames here.
-          Bounding boxes (lion=green, hyena=purple, buffalo=red) are
-          already drawn by the backend before each frame is sent.
+          Bounding boxes are already drawn by the backend before sending.
         */}
         {isRunning && (
           <img
@@ -59,7 +58,6 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
           />
         )}
 
-        {/* Shown when camera is off */}
         {!isRunning && (
           <div className="video-overlay">
             <span className="overlay-icon">📷</span>
@@ -68,10 +66,8 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
         )}
       </div>
 
-      {/* Controls bar */}
       <div className="video-controls">
 
-        {/* Start button → calls POST /api/camera/start (via onStart prop) */}
         <button
           className="btn btn-primary"
           onClick={onStart}
@@ -80,7 +76,6 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
           ▶ Start
         </button>
 
-        {/* Stop button → calls POST /api/camera/stop (via onStop prop) */}
         <button
           className="btn btn-danger"
           onClick={onStop}
@@ -89,7 +84,6 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
           ■ Stop
         </button>
 
-        {/* Upload button → POST /api/video/upload (via onUpload prop) */}
         <button
           className="btn btn-secondary"
           onClick={() => fileInputRef.current.click()}
@@ -104,7 +98,6 @@ export default function VideoFeed({ isRunning, onStart, onStop, onUpload, fps, f
           onChange={handleFileChange}
         />
 
-        {/* FPS display — value comes from polling /api/detections/live */}
         <span className="fps-badge">
           FPS: <strong>{fps || "—"}</strong>
         </span>

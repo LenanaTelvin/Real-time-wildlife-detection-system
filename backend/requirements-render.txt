@@ -1,0 +1,23 @@
+# requirements-render.txt - Lightweight dependencies for Render
+# NO PyTorch, NO Ultralytics - ML runs locally via tunnel
+
+# Core web framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+gunicorn==21.2.0
+eventlet==0.33.3
+python-dotenv==1.0.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Image processing (lightweight)
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
+Pillow==10.0.0
+
+# HTTP requests (to call local ML API)
+requests==2.31.0
+
+# Email alerts (optional)
+secure-smtplib==0.1.1
