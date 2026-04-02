@@ -14,6 +14,8 @@
 """
 
 import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))  # Adds backend/ to path
 from dotenv import load_dotenv
 from flask import jsonify
 
@@ -23,7 +25,7 @@ load_dotenv(dotenv_path)
 from flask import Flask
 from flask_cors import CORS
 #from utils.storage import upload_manager
-from .utils.storage import upload_manager
+from utils.storage import upload_manager
 from api.routes import api_blueprint
 
 app = Flask(__name__)
