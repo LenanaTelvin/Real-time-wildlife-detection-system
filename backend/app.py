@@ -22,7 +22,8 @@ load_dotenv(dotenv_path)
 
 from flask import Flask
 from flask_cors import CORS
-from utils.storage import upload_manager
+#from utils.storage import upload_manager
+from .utils.storage import upload_manager
 from api.routes import api_blueprint
 
 app = Flask(__name__)
