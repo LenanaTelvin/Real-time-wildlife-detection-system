@@ -10,7 +10,16 @@ import time
 import threading
 import queue
 from datetime import datetime
-from ultralytics import YOLO
+#from ultralytics import YOLO
+# ── CONDITIONAL IMPORT FOR YOLO ───────────────────────────────────────────────
+# This allows the app to run on Render without ultralytics (tunnel mode)
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+    print("✅ Ultralytics available - local detection mode")
+except ImportError:
+    YOLO_AVAILABLE = False
+    print("⚠️ Ultralytics not available - running in tunnel mode only")
 
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────
 _current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,8 +39,15 @@ _logged_this_session  = set()
 _alerted_this_session = set()
 
 # ── LOAD MODEL ────────────────────────────────────────────────────────────────
-model = YOLO(MODEL_PATH)
-print(f"YOLOv11 model loaded: {MODEL_PATH}")
+"""model = YOLO(MODEL_PATH)
+print(f"YOLOv11 model loaded: {MODEL_PATH}")"""
+# ── LOAD MODEL (only if available) ────────────────────────────────────────────
+if YOLO_AVAILABLE:
+    model = YOLO(MODEL_PATH)
+    print(f"✅ YOLOv11 model loaded: {MODEL_PATH}")
+else:
+    model = None
+    print("⚠️ No local model - will use tunnel for ML processing")
 
 # ── GLOBAL STATE ──────────────────────────────────────────────────────────────
 _camera_active  = False
@@ -224,7 +240,11 @@ def _processing_loop(source: str):
 
 # ── DETECTION FUNCTION ────────────────────────────────────────────────────────
 def _run_detection(frame) -> list:
-    results    = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
+    if model is None:
+        return []  # Return empty detections in tunnel mode
+    
+    results = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
+    #results    = model(frame, conf=CONFIDENCE_THRESHOLD, verbose=False)[0]
     detections = []
     for box in results.boxes:
         class_id   = int(box.cls[0])
