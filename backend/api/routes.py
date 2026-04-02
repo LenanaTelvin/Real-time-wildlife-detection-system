@@ -26,6 +26,8 @@ from flask import Blueprint, jsonify, request, Response
 # ── ML TUNNEL SUPPORT (for Render deployment) ─────────────────────────────────
 import requests
 
+latest_annotated_frame = None
+
 # ── ML TUNNEL CONFIGURATION ────────────────────────────────────────────────────
 def is_tunnel_mode():
     """Check if we should use ML tunnel (forward to local service)"""
@@ -145,6 +147,8 @@ def upload_frame():
     If tunnel mode is enabled, forwards to local ML service.
     Otherwise, uses local YOLO model.
     """
+    global latest_annotated_frame  # ← ADD THIS LINE
+    
     data = request.get_json()
     if not data or 'image' not in data:
         return jsonify({"status": "error", "message": "No image provided"}), 400
@@ -158,6 +162,10 @@ def upload_frame():
             result = forward_to_tunnel(image_data)
             
             if result:
+                # ── FIX: Store the annotated frame for the MJPEG stream ──────
+                if result.get('annotated_frame'):
+                    latest_annotated_frame = base64.b64decode(result['annotated_frame'])
+                
                 # Save detections to database
                 for det in result.get('detections', []):
                     annotated_bytes = None
@@ -176,13 +184,16 @@ def upload_frame():
         
         # ── LOCAL MODE: Use existing logic ────────────────────────────────────
         else:
-            # Your existing code (unchanged)
             header, encoded = image_data.split(",", 1)
             nparr = np.frombuffer(base64.b64decode(encoded), np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
             # Process with local model
             process_remote_frame(frame)
+            
+            # Also store the processed frame for stream
+            from detection.model import get_latest_frame
+            latest_annotated_frame = get_latest_frame()
             
             return jsonify({"status": "ok"})
             
@@ -282,17 +293,33 @@ def video_stream():
     Frontend uses this as an <img> src:
       <img src="http://localhost:5000/api/video/stream" />
 
-    Pushes annotated JPEG frames continuously.
+    Pushes annotated JPEG frames continuously like a CCTV feed.
     """
     def generate():
+        global latest_annotated_frame
+        import time
+        
         while True:
-            frame = get_latest_frame()
+            # First try to get frame from tunnel mode
+            frame = latest_annotated_frame
+            
+            # If no frame from tunnel, try local mode
+            if frame is None:
+                frame = get_latest_frame()
+            
             if frame is not None:
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
-
+            else:
+                # No frame yet, wait a bit
+                time.sleep(0.05)
+                continue
+            
+            # ~30 fps for smooth video
+            time.sleep(0.033)
+    
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
