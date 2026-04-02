@@ -93,7 +93,7 @@ def init_database():
                     "INSERT INTO users (username, email) VALUES (%s, %s)",
                     ("admin", "admin@example.com")
                 )
-
+    
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -325,6 +325,15 @@ def get_detection_stats() -> dict:
             ).fetchone()[0]
 
         return {"total": total, "by_species": by_species, "today": today_count}
-
+    
     finally:
         release_db_connection(conn)
+
+# ============================================================
+# INITIALIZE DATABASE TABLES WHEN MODULE LOADS
+# ============================================================
+try:
+    init_database()
+    print("✅ Database tables initialized successfully")
+except Exception as e:
+    print(f"⚠️ Failed to initialize database tables: {e}")
