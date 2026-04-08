@@ -4,13 +4,13 @@
  * The Detection History table at the bottom of the dashboard.
  *
  * Shows all logged detections with species, confidence, time, date,
- * alert status, and a delete action per row.
+ * and delete action per row.
  *
  * ⭐ DATA FLOW ⭐
- * Data is passed in as props from History.jsx (or Dashboard.jsx).
+ * Data is passed in as props from History.jsx.
  * History.jsx fetches data by calling:
- *   GET  /api/detections/logs?limit=100&species=<filter>
- *   DELETE /api/detections/<id>  (when Delete is clicked)
+ *   GET  /api/ai/history?limit=100&species=<filter>
+ *   DELETE /api/ai/history/<id>  (when Delete is clicked)
  *
  * Props:
  *   logs       {Array}   — detection records from the database
@@ -22,12 +22,19 @@
 const SPECIES_COLORS = {
   lions:    "#22c55e",
   hyenas:   "#a855f7",
-  Buffalo: "#ef4444",
+  buffalo:  "#ef4444",  // Changed from "Buffalo" to lowercase for consistency
+};
+
+// Helper function to format date
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown';
+  const date = new Date(dateString);
+  return date.toLocaleString();
 };
 
 export default function DetectionOverlay({ logs = [], onDelete, onFilter, totalCount = 0 }) {
   return (
-    <div className="logs-panel" id="logs">
+    <div className="logs-panel">
 
       {/* Toolbar: title + filter dropdown + count */}
       <div className="logs-toolbar">
@@ -35,7 +42,7 @@ export default function DetectionOverlay({ logs = [], onDelete, onFilter, totalC
 
         {/*
           Species filter — onFilter sends value to History.jsx
-          which re-calls GET /api/detections/logs?species=<value>
+          which re-calls GET /api/ai/history?species=<value>
         */}
         <select
           className="filter-select"
@@ -45,7 +52,7 @@ export default function DetectionOverlay({ logs = [], onDelete, onFilter, totalC
           <option value="">All Species</option>
           <option value="lions">Lion</option>
           <option value="hyenas">Hyena</option>
-          <option value="Buffalo">Buffalo</option>
+          <option value="buffalo">Buffalo</option>
         </select>
 
         <span className="log-count">{totalCount} entries</span>
@@ -58,30 +65,33 @@ export default function DetectionOverlay({ logs = [], onDelete, onFilter, totalC
             <tr>
               <th>Species</th>
               <th>Confidence</th>
-              <th>Time</th>
-              <th>Date</th>
-              <th>Alert</th>
+              <th>Date & Time</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {logs.length === 0 ? (
               <tr>
-                <td colSpan={6} className="table-empty">
+                <td colSpan={4} className="table-empty">
                   No detections recorded yet
                 </td>
               </tr>
             ) : (
               logs.map((log) => {
-                const color = SPECIES_COLORS[log.species] || "#64748b";
-                const confPct = Math.round(log.confidence * 100);
+                // Get species name (handle both cases)
+                const species = log.species?.toLowerCase() || '';
+                const color = SPECIES_COLORS[species] || "#64748b";
+                const confPct = Math.round((log.confidence || 0) * 100);
+                
                 return (
                   <tr key={log.id}>
                     {/* Species with color dot */}
                     <td>
                       <div className="species-tag">
                         <div className="dot" style={{ background: color }} />
-                        {log.species}
+                        <span style={{ color: color }}>
+                          {log.species}
+                        </span>
                       </div>
                     </td>
 
@@ -98,27 +108,24 @@ export default function DetectionOverlay({ logs = [], onDelete, onFilter, totalC
                       </div>
                     </td>
 
-                    <td><span className="time-text">{log.timestamp}</span></td>
-                    <td><span className="time-text">{log.date}</span></td>
-
-                    {/* Alert badge */}
+                    {/* Date & Time combined */}
                     <td>
-                      <span className={`alert-badge ${log.alert_sent ? "sent" : "no"}`}>
-                        {log.alert_sent ? "✓ Sent" : "—"}
+                      <span className="time-text">
+                        {formatDate(log.created_at) || `${log.date} ${log.timestamp}`}
                       </span>
                     </td>
 
-                    {/* Delete — calls DELETE /api/detections/<id> via onDelete prop */}
+                    {/* Delete — calls DELETE /api/ai/history/<id> via onDelete prop */}
                     <td>
                       <button
                         className="action-btn"
                         onClick={() => {
-                          if (window.confirm("Delete this record?")) {
+                          if (window.confirm("Delete this detection record?")) {
                             onDelete(log.id);
                           }
                         }}
                       >
-                        Delete
+                        🗑 Delete
                       </button>
                     </td>
                   </tr>

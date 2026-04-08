@@ -22,6 +22,7 @@ import numpy as np
 import os
 import threading
 from flask import Blueprint, jsonify, request, Response
+from src.controllers.auth_controller import AuthController
 
 # ── ML TUNNEL SUPPORT (for Render deployment) ─────────────────────────────────
 import requests
@@ -147,7 +148,7 @@ def upload_frame():
     If tunnel mode is enabled, forwards to local ML service.
     Otherwise, uses local YOLO model.
     """
-    global latest_annotated_frame  # ← ADD THIS LINE
+    global latest_annotated_frame
     
     data = request.get_json()
     if not data or 'image' not in data:
@@ -162,7 +163,7 @@ def upload_frame():
             result = forward_to_tunnel(image_data)
             
             if result:
-                # ── FIX: Store the annotated frame for the MJPEG stream ──────
+                # Store the annotated frame for the MJPEG stream
                 if result.get('annotated_frame'):
                     latest_annotated_frame = base64.b64decode(result['annotated_frame'])
                 
@@ -173,11 +174,17 @@ def upload_frame():
                         annotated_bytes = base64.b64decode(result['annotated_frame'])
                     save_detection(det, annotated_bytes)
                 
-                return jsonify(result)
+                # Return the annotated frame to frontend
+                return jsonify({
+                    "detections": result.get('detections', []),
+                    "annotated_frame": result.get('annotated_frame'),
+                    "status": "ok"
+                })
             else:
                 # Tunnel failed, return empty result
                 return jsonify({
                     "detections": [],
+                    "annotated_frame": None,
                     "status": "ok",
                     "message": "Tunnel mode active but no response"
                 })
@@ -188,14 +195,28 @@ def upload_frame():
             nparr = np.frombuffer(base64.b64decode(encoded), np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
-            # Process with local model
+            # Process with local model - this updates _latest_frame internally
+            from detection.model import process_remote_frame, get_latest_frame
             process_remote_frame(frame)
             
-            # Also store the processed frame for stream
-            from detection.model import get_latest_frame
-            latest_annotated_frame = get_latest_frame()
+            # Get the annotated frame that was just processed
+            annotated_frame_bytes = get_latest_frame()
             
-            return jsonify({"status": "ok"})
+            # Convert to base64 for frontend
+            annotated_base64 = None
+            if annotated_frame_bytes:
+                annotated_base64 = base64.b64encode(annotated_frame_bytes).decode('utf-8')
+                latest_annotated_frame = annotated_frame_bytes
+            
+            # Also get detections
+            from detection.model import get_live_detections
+            detections = get_live_detections()
+            
+            return jsonify({
+                "detections": detections,
+                "annotated_frame": f'data:image/jpeg;base64,{annotated_base64}' if annotated_base64 else None,
+                "status": "ok"
+            })
             
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -399,3 +420,24 @@ def delete_detection(detection_id):
     """DELETE /api/detections/42  — removes that row from the history table."""
     delete_detection_by_id(detection_id)
     return jsonify({"status": "deleted", "id": detection_id})
+
+@api_blueprint.route("/test", methods=["GET"])
+def test_route(): 
+    
+    return {"message": "Test route works!"}, 200
+# Add these routes at the bottom of the file
+@api_blueprint.route("/auth/register", methods=["POST"])
+def auth_register():
+    return AuthController.register()
+
+@api_blueprint.route("/auth/login", methods=["POST"])
+def auth_login():
+    return AuthController.login()
+
+@api_blueprint.route("/auth/profile", methods=["GET"])
+def auth_profile():
+    return AuthController.get_profile()
+
+@api_blueprint.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    return AuthController.logout()

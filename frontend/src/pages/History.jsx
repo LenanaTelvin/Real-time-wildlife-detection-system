@@ -3,64 +3,110 @@
  *
  * THE HISTORY PAGE — shows the full detection log table.
  *
- * API calls made here:
- *   GET    /api/detections/logs?limit=100&species=<filter>
- *   DELETE /api/detections/<id>
+ * API calls made here (UPDATED for your backend):
+ *   GET    /api/ai/history?limit=100&species=<filter>
+ *   DELETE /api/ai/history/<id>
+ * 
+ * All requests include JWT token for authentication.
  */
 
 import { useState, useEffect } from "react";
+import { useNavigate, Link} from "react-router-dom";
+import { authService } from "../services/authService";
+import api from "../services/api";
 import DetectionOverlay from "../components/DetectionOverlay";
 
-// ── FIX 1: BACKEND_URL now reads from environment variable ───────────────────
-// Previously hardcoded to "http://localhost:5000" which only works on the
-// machine running the backend. Breaks on phones and in production on Render.
-// Set VITE_API_URL in frontend/.env for local dev.
-// On Render, render.yaml sets VITE_API_URL to the deployed backend URL.
-const BACKEND_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
-export default function History() {
-  const [logs, setLogs]            = useState([]);
-  const [totalCount, setTotal]     = useState(0);
-  const [speciesFilter, setFilter] = useState("");
+// Backend URL from environment variable
+const BACKEND_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`;
 
+export default function History() {
+  const [logs, setLogs] = useState([]);
+  const [totalCount, setTotal] = useState(0);
+  const [speciesFilter, setFilter] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  // Check authentication on mount
   useEffect(() => {
-    loadLogs(speciesFilter);
+    if (!authService.isAuthenticated()) {
+      navigate('/login');
+      return;
+    }
+  }, []);
+
+  // Load logs when filter changes
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      loadLogs(speciesFilter);
+    }
   }, [speciesFilter]);
 
+  // Poll for updates every 10 seconds
   useEffect(() => {
+    if (!authService.isAuthenticated()) return;
+    
     const interval = setInterval(() => loadLogs(speciesFilter), 10000);
     return () => clearInterval(interval);
   }, [speciesFilter]);
 
-
-  // ── FETCH LOGS ─────────────────────────────────────────────────────────────
+  // ── FETCH LOGS (UPDATED for your backend) ─────────────────────────────────
   async function loadLogs(species = "") {
-    const url = species
-      ? `${BACKEND_URL}/api/detections/logs?limit=100&species=${species}`
-      : `${BACKEND_URL}/api/detections/logs?limit=100`;
-
+    setLoading(true);
     try {
-      const res  = await fetch(url);
-      const data = await res.json();
-      setLogs(data.logs || []);
-      setTotal(data.total || 0);
-    } catch {
-      // Backend may be offline
+      // Use your backend endpoint: /api/ai/history
+      let url = '/ai/history?limit=100';
+      if (species) {
+        url += `&species=${species}`;
+      }
+      
+      const response = await api.get(url);
+      // Your backend returns { data: [...], count: number }
+      const data = response.data.data || [];
+      setLogs(data);
+      setTotal(response.data.count || data.length);
+    } catch (error) {
+      console.error('Failed to load logs:', error);
+      if (error.response?.status === 401) {
+        navigate('/login');
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
-
-  // ── DELETE A LOG ENTRY ─────────────────────────────────────────────────────
+  // ── DELETE A LOG ENTRY (if your backend supports it) ──────────────────────
   async function handleDelete(id) {
+    if (!window.confirm('Are you sure you want to delete this detection?')) {
+      return;
+    }
+    
     try {
-      await fetch(`${BACKEND_URL}/api/detections/${id}`, { method: "DELETE" });
-      loadLogs(speciesFilter);
-    } catch {
-      alert("Could not delete — is backend running?");
+      // Try to delete using your backend endpoint
+      await api.delete(`/ai/history/${id}`);
+      // Refresh the list after deletion
+      await loadLogs(speciesFilter);
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      if (error.response?.status === 404) {
+        alert('Delete endpoint not implemented on backend yet');
+      } else if (error.response?.status === 401) {
+        alert('Session expired. Please login again.');
+        navigate('/login');
+      } else {
+        alert('Failed to delete detection');
+      }
     }
   }
-
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
+  if (loading && logs.length === 0) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner-large"></div>
+      </div>
+    );
+  }
+
   return (
     <DetectionOverlay
       logs={logs}

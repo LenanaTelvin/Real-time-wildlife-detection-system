@@ -43,3 +43,7 @@ python-dotenv==1.0.0
 psycopg[binary]
 psycopg_pool
 Werkzeug==2.3.0
+
+#Authentication
+bcrypt=5.0.0 
+pyjwt=2.12.1

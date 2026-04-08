@@ -63,7 +63,16 @@ export default function MetricsDisplay({ liveDetections = [], stats = {} }) {
         <div className="big-number">{stats.total ?? 0}</div>
         <div className="big-number-label">all time · {stats.today ?? 0} today</div>
       </div>
-
+      
+      {/* Card 3: Today's Detections (NEW) */}
+      <div className="stat-card">
+        <div className="stat-card-title">📅 Today</div>
+        <div className="big-number" style={{ color: "#3b82f6" }}>
+          {stats.today ?? 0}
+        </div>
+        <div className="big-number-label">detections today</div>
+      </div>
+      
       {/* ── BY SPECIES ────────────────────────────────────────────────── */}
       <div className="stat-card">
         <div className="stat-card-title">🦁 By Species</div>
